@@ -7,7 +7,14 @@ def test_index_loads(page: Page, static_server):
     expect(page.locator("h1")).to_have_text("Tools")
 
 
-def test_index_shows_empty_state(page: Page, static_server):
-    """Test that empty state is shown when no tools exist."""
+def test_index_shows_tools_list(page: Page, static_server):
+    """Test that tools list is shown when tools exist."""
     page.goto("http://127.0.0.1:8123/")
-    expect(page.locator("#empty-state")).to_be_visible()
+    expect(page.locator("#tools-list")).to_be_visible()
+    expect(page.locator("#empty-state")).not_to_be_visible()
+
+
+def test_index_shows_catan_tool(page: Page, static_server):
+    """Test that Catan Placement Practice tool is listed."""
+    page.goto("http://127.0.0.1:8123/")
+    expect(page.locator(".tool-name")).to_contain_text("Catan Placement Practice")

@@ -56,9 +56,10 @@ def test_place_road(page: Page, static_server):
     # Place settlement
     page.locator("#board .vertex-hint").first.click()
 
-    # Place road
+    # Wait for road hints to appear and click
+    # Use force=True because SVG line elements can be thin
     road_hint = page.locator("#board .edge-hint").first
-    road_hint.click()
+    road_hint.click(force=True)
 
     # Should move to Player 2
     expect(page.locator("#currentPlayer")).to_have_text("Player 2 (Blue)")
@@ -85,7 +86,7 @@ def test_undo_road(page: Page, static_server):
 
     # Place settlement and road
     page.locator("#board .vertex-hint").first.click()
-    page.locator("#board .edge-hint").first.click()
+    page.locator("#board .edge-hint").first.click(force=True)
     expect(page.locator("#currentPlayer")).to_have_text("Player 2 (Blue)")
 
     # Undo road
@@ -194,8 +195,8 @@ def test_snake_draft_order(page: Page, static_server):
         page.locator("#board .vertex-hint").first.click()
         expect(page.locator("#phaseInfo")).to_have_text("Place a road")
 
-        # Place road
-        page.locator("#board .edge-hint").first.click()
+        # Place road - use force=True for thin SVG lines
+        page.locator("#board .edge-hint").first.click(force=True)
 
     # After all placements, setup should be complete
     expect(page.locator("#currentPlayer")).to_have_text("Setup Complete!")
