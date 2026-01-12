@@ -55,8 +55,14 @@
             display: block;
             width: 100%;
             height: auto;
-            min-width: 480px;
             max-width: 580px;
+        }
+
+        /* Ensure minimum board size on larger screens (tablets and up) */
+        @media (min-width: 768px) {
+            #board {
+                min-width: 480px;
+            }
         }
 
         .controls {

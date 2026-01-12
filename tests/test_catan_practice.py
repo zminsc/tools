@@ -398,3 +398,138 @@ def test_board_validation_multiple_boards(page: Page, static_server):
             }
         """)
         assert result, f"Board {i + 1} failed validation"
+
+
+def test_ports_are_rendered(page: Page, static_server):
+    """Test that port indicators are rendered on the board."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Port indicators should be visible (2 per port = 18 total for 9 ports)
+    port_indicators = page.locator("#board .port-indicator")
+    expect(port_indicators).to_have_count(18)
+
+
+def test_ports_count(page: Page, static_server):
+    """Test that exactly 9 ports are generated."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            return gameState.ports.length;
+        }
+    """)
+    assert result == 9, f"Expected 9 ports, got {result}"
+
+
+def test_port_types_distribution(page: Page, static_server):
+    """Test that ports have correct type distribution (4x 3:1, 5x resource)."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            const typeCounts = {};
+            for (const port of gameState.ports) {
+                typeCounts[port.type] = (typeCounts[port.type] || 0) + 1;
+            }
+            return typeCounts;
+        }
+    """)
+
+    # Should have 4 generic 3:1 ports
+    assert result.get("3:1", 0) == 4, f"Expected 4 generic ports, got {result.get('3:1', 0)}"
+
+    # Should have exactly 1 of each resource port
+    resource_ports = ["wood", "wheat", "sheep", "brick", "ore"]
+    for resource in resource_ports:
+        assert result.get(resource, 0) == 1, f"Expected 1 {resource} port, got {result.get(resource, 0)}"
+
+
+def test_port_types_randomized(page: Page, static_server):
+    """Test that port types are randomized between board generations."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Get port types for multiple boards
+    port_type_configs = []
+    for i in range(5):
+        if i > 0:
+            page.locator("#newBoardBtn").click()
+
+        types = page.evaluate("""
+            () => gameState.ports.map(p => p.type)
+        """)
+        port_type_configs.append(tuple(types))
+
+    # At least 2 different configurations should exist
+    unique_configs = set(port_type_configs)
+    assert len(unique_configs) >= 2, "Port types should be randomized between board generations"
+
+
+def test_ports_at_coastal_edges(page: Page, static_server):
+    """Test that all ports are at coastal edges (facing water)."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            // Check each port position is at a coastal edge
+            const HEX_DIRECTIONS_BY_EDGE = [
+                { q: 1, r: 0 },   // Edge 0 faces right
+                { q: 0, r: 1 },   // Edge 1 faces lower-right
+                { q: -1, r: 1 },  // Edge 2 faces lower-left
+                { q: -1, r: 0 },  // Edge 3 faces left
+                { q: 0, r: -1 },  // Edge 4 faces upper-left
+                { q: 1, r: -1 }   // Edge 5 faces upper-right
+            ];
+
+            for (const pos of PORT_EDGE_POSITIONS) {
+                const hex = gameState.hexes[pos.hexIndex];
+                const dir = HEX_DIRECTIONS_BY_EDGE[pos.edgeIndex];
+                const neighborQ = hex.q + dir.q;
+                const neighborR = hex.r + dir.r;
+
+                // Check if neighbor exists (if it does, edge is not coastal)
+                const neighborExists = gameState.hexes.some(h => h.q === neighborQ && h.r === neighborR);
+                if (neighborExists) {
+                    return {
+                        valid: false,
+                        error: `Port at hex ${pos.hexIndex} edge ${pos.edgeIndex} is not coastal`
+                    };
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown error")
+
+
+def test_ports_not_adjacent(page: Page, static_server):
+    """Test that no two ports share a vertex (are not adjacent)."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            const vertexUsage = new Map();
+
+            for (let i = 0; i < gameState.ports.length; i++) {
+                const port = gameState.ports[i];
+
+                // Check if either vertex is already used by another port
+                if (vertexUsage.has(port.vertex1Key)) {
+                    return {
+                        valid: false,
+                        error: `Ports ${vertexUsage.get(port.vertex1Key)} and ${i} share vertex ${port.vertex1Key}`
+                    };
+                }
+                if (vertexUsage.has(port.vertex2Key)) {
+                    return {
+                        valid: false,
+                        error: `Ports ${vertexUsage.get(port.vertex2Key)} and ${i} share vertex ${port.vertex2Key}`
+                    };
+                }
+
+                vertexUsage.set(port.vertex1Key, i);
+                vertexUsage.set(port.vertex2Key, i);
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown error")
