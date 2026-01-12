@@ -614,17 +614,19 @@
         ];
 
         // Port positions (edge of board) - defined by hex index and edge index
-        // Edge indices: 0=top-right, 1=right, 2=bottom-right, 3=bottom-left, 4=left, 5=top-left
+        // Edge indices based on corner pairs: 0=right(0→1), 1=lower-right(1→2), 2=lower-left(2→3), 3=left(3→4), 4=upper-left(4→5), 5=upper-right(5→0)
+        // Each edge faces a neighbor direction: 0→(1,0), 1→(0,1), 2→(-1,1), 3→(-1,0), 4→(0,-1), 5→(1,-1)
+        // Coastal edges are those where the neighbor hex doesn't exist
         const PORT_EDGE_POSITIONS = [
-            { hexIndex: 0, edgeIndex: 5 },   // Top-left area
-            { hexIndex: 1, edgeIndex: 0 },   // Top area
-            { hexIndex: 2, edgeIndex: 0 },   // Top-right area
-            { hexIndex: 6, edgeIndex: 1 },   // Right upper
-            { hexIndex: 11, edgeIndex: 1 },  // Right lower
-            { hexIndex: 15, edgeIndex: 2 },  // Bottom-right area
-            { hexIndex: 18, edgeIndex: 2 },  // Bottom area
-            { hexIndex: 16, edgeIndex: 3 },  // Bottom-left area
-            { hexIndex: 7, edgeIndex: 4 }    // Left area
+            { hexIndex: 3, edgeIndex: 4 },   // Top-left - hex 3's upper-left edge (faces up-left, no neighbor)
+            { hexIndex: 0, edgeIndex: 5 },   // Top - hex 0's upper-right edge (faces up-right, no neighbor)
+            { hexIndex: 2, edgeIndex: 5 },   // Top-right - hex 2's upper-right edge (faces up-right, no neighbor)
+            { hexIndex: 6, edgeIndex: 0 },   // Right-upper - hex 6's right edge (faces right, no neighbor)
+            { hexIndex: 11, edgeIndex: 0 },  // Right-lower - hex 11's right edge (faces right, no neighbor)
+            { hexIndex: 15, edgeIndex: 1 },  // Bottom-right - hex 15's lower-right edge (faces down-right, no neighbor)
+            { hexIndex: 18, edgeIndex: 1 },  // Bottom - hex 18's lower-right edge (faces down-right, no neighbor)
+            { hexIndex: 16, edgeIndex: 2 },  // Bottom-left - hex 16's lower-left edge (faces down-left, no neighbor)
+            { hexIndex: 7, edgeIndex: 3 }    // Left - hex 7's left edge (faces left, no neighbor)
         ];
 
         // Port types to be shuffled (4 generic 3:1, 5 resource-specific 2:1)
@@ -1176,50 +1178,14 @@
             // Draw port indicators at each port vertex
             gameState.ports.forEach(port => {
                 const color = PORT_COLORS[port.type] || '#7f8c8d';
-                const label = port.type === '3:1' ? '3:1' : '2:1';
 
-                // Draw indicator at vertex 1
-                drawPortIndicator(svg, port.x1, port.y1, color, label);
-
-                // Draw indicator at vertex 2
-                drawPortIndicator(svg, port.x2, port.y2, color, label);
-
-                // Draw connecting line between the two port vertices (dock/pier effect)
-                const midX = (port.x1 + port.x2) / 2;
-                const midY = (port.y1 + port.y2) / 2;
-
-                // Calculate direction pointing away from board center
-                const dx = midX - BOARD_CENTER_X;
-                const dy = midY - BOARD_CENTER_Y;
-                const len = Math.sqrt(dx * dx + dy * dy);
-                const normDx = dx / len;
-                const normDy = dy / len;
-
-                // Draw a small label outside the board
-                const labelX = midX + normDx * 25;
-                const labelY = midY + normDy * 25;
-
-                const labelBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                labelBg.setAttribute('x', labelX - 16);
-                labelBg.setAttribute('y', labelY - 9);
-                labelBg.setAttribute('width', 32);
-                labelBg.setAttribute('height', 18);
-                labelBg.setAttribute('rx', 3);
-                labelBg.setAttribute('fill', color);
-                labelBg.setAttribute('stroke', '#1a1a2e');
-                labelBg.setAttribute('stroke-width', 1);
-                svg.appendChild(labelBg);
-
-                const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                labelText.setAttribute('x', labelX);
-                labelText.setAttribute('y', labelY + 1);
-                labelText.setAttribute('class', 'port-text');
-                labelText.textContent = label;
-                svg.appendChild(labelText);
+                // Draw indicator at both vertices of this port
+                drawPortIndicator(svg, port.x1, port.y1, color);
+                drawPortIndicator(svg, port.x2, port.y2, color);
             });
         }
 
-        function drawPortIndicator(svg, x, y, color, label) {
+        function drawPortIndicator(svg, x, y, color) {
             // Draw a small colored circle at the port vertex
             const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             circle.setAttribute('cx', x);
