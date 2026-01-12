@@ -200,3 +200,47 @@ def test_snake_draft_order(page: Page, static_server):
 
     # After all placements, setup should be complete
     expect(page.locator("#currentPlayer")).to_have_text("Setup Complete!")
+
+
+def test_board_visible_on_mobile(page: Page, static_server):
+    """Test that the board is fully visible on mobile viewport without horizontal scrolling."""
+    # Set mobile viewport (iPhone SE size)
+    page.set_viewport_size({"width": 375, "height": 667})
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Get the board element
+    board = page.locator("#board")
+    expect(board).to_be_visible()
+
+    # Get board bounding box
+    board_box = board.bounding_box()
+    assert board_box is not None, "Board should have a bounding box"
+
+    # Board should fit within viewport width (375px)
+    # Account for container padding (10px on each side = 20px total on mobile)
+    assert board_box["width"] <= 375, (
+        f"Board width ({board_box['width']}px) should fit within mobile viewport (375px)"
+    )
+
+    # Board's right edge should be within viewport
+    assert board_box["x"] + board_box["width"] <= 375, (
+        "Board should not extend beyond viewport width"
+    )
+
+
+def test_board_visible_on_small_mobile(page: Page, static_server):
+    """Test board visibility on very small mobile viewport (320px width)."""
+    # Set very small mobile viewport
+    page.set_viewport_size({"width": 320, "height": 568})
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    board = page.locator("#board")
+    expect(board).to_be_visible()
+
+    board_box = board.bounding_box()
+    assert board_box is not None, "Board should have a bounding box"
+
+    # Board should scale down to fit 320px viewport
+    assert board_box["width"] <= 320, (
+        f"Board width ({board_box['width']}px) should fit within small mobile viewport (320px)"
+    )
