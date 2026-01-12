@@ -244,3 +244,157 @@ def test_board_visible_on_small_mobile(page: Page, static_server):
     assert board_box["width"] <= 320, (
         f"Board width ({board_box['width']}px) should fit within small mobile viewport (320px)"
     )
+
+
+def test_skip_roads_toggle_exists(page: Page, static_server):
+    """Test that the skip roads toggle exists."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+    expect(page.locator("#skipRoadsToggle")).to_be_visible()
+
+
+def test_skip_roads_toggle_skips_road_phase(page: Page, static_server):
+    """Test that enabling skip roads toggle skips road placement phase."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Enable skip roads toggle
+    page.locator("#skipRoadsToggle").check()
+
+    # Place settlement
+    page.locator("#board .vertex-hint").first.click()
+
+    # Should skip road phase and go directly to Player 2
+    expect(page.locator("#currentPlayer")).to_have_text("Player 2 (Blue)")
+    expect(page.locator("#phaseInfo")).to_have_text("Place 1st settlement")
+    expect(page.locator("#roadCount")).to_have_text("0")
+
+
+def test_skip_roads_toggle_full_draft(page: Page, static_server):
+    """Test skip roads toggle allows completing full draft without roads."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Enable skip roads toggle
+    page.locator("#skipRoadsToggle").check()
+
+    expected_players = [
+        "Player 1 (Red)",
+        "Player 2 (Blue)",
+        "Player 3 (Orange)",
+        "Player 4 (Green)",
+        "Player 4 (Green)",
+        "Player 3 (Orange)",
+        "Player 2 (Blue)",
+        "Player 1 (Red)",
+    ]
+
+    for player in expected_players:
+        expect(page.locator("#currentPlayer")).to_have_text(player)
+        page.locator("#board .vertex-hint").first.click()
+
+    # After all placements, setup should be complete
+    expect(page.locator("#currentPlayer")).to_have_text("Setup Complete!")
+    expect(page.locator("#settlementCount")).to_have_text("8")
+    expect(page.locator("#roadCount")).to_have_text("0")
+
+
+def test_board_validation_six_eight_not_adjacent(page: Page, static_server):
+    """Test that 6 and 8 are never adjacent on the generated board."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Check board validation via JavaScript
+    result = page.evaluate("""
+        () => {
+            // Get all pairs of adjacent hexes with numbers
+            for (let i = 0; i < gameState.hexes.length; i++) {
+                const hex = gameState.hexes[i];
+                if (hex.number === null) continue;
+
+                const adjacentIndices = getAdjacentHexIndices(i, gameState.hexes);
+                for (const adjIndex of adjacentIndices) {
+                    const adjHex = gameState.hexes[adjIndex];
+                    if (adjHex.number === null) continue;
+
+                    // Check if 6 and 8 are adjacent
+                    if ((hex.number === 6 && adjHex.number === 8) ||
+                        (hex.number === 8 && adjHex.number === 6)) {
+                        return { valid: false, error: `6 and 8 are adjacent at hexes ${i} and ${adjIndex}` };
+                    }
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown validation error")
+
+
+def test_board_validation_same_numbers_not_adjacent(page: Page, static_server):
+    """Test that same numbers are never adjacent on the generated board."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            for (let i = 0; i < gameState.hexes.length; i++) {
+                const hex = gameState.hexes[i];
+                if (hex.number === null) continue;
+
+                const adjacentIndices = getAdjacentHexIndices(i, gameState.hexes);
+                for (const adjIndex of adjacentIndices) {
+                    const adjHex = gameState.hexes[adjIndex];
+                    if (adjHex.number === null) continue;
+
+                    // Check if same numbers are adjacent
+                    if (hex.number === adjHex.number) {
+                        return { valid: false, error: `Same number ${hex.number} at adjacent hexes ${i} and ${adjIndex}` };
+                    }
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown validation error")
+
+
+def test_board_validation_no_13_pips_vertex(page: Page, static_server):
+    """Test that no vertex has 13 or more pips."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            const vertexMap = getVerticesWithAdjacentHexes(gameState.hexes);
+
+            for (const [key, hexIndices] of vertexMap) {
+                let totalPips = 0;
+                const numbers = [];
+
+                for (const hexIndex of hexIndices) {
+                    const hex = gameState.hexes[hexIndex];
+                    if (hex.number !== null) {
+                        totalPips += NUMBER_PROBABILITY[hex.number] || 0;
+                        numbers.push(hex.number);
+                    }
+                }
+
+                if (totalPips >= 13) {
+                    return { valid: false, error: `Vertex ${key} has ${totalPips} pips (numbers: ${numbers.join(', ')})` };
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown validation error")
+
+
+def test_board_validation_multiple_boards(page: Page, static_server):
+    """Test that multiple board generations all pass validation."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Generate and validate 10 boards
+    for i in range(10):
+        page.locator("#newBoardBtn").click()
+
+        # Check all validation rules
+        result = page.evaluate("""
+            () => {
+                return isValidBoard(gameState.hexes);
+            }
+        """)
+        assert result, f"Board {i + 1} failed validation"

@@ -180,6 +180,24 @@
             cursor: not-allowed;
         }
 
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        .toggle-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
         .instructions {
             background: #1a1a2e;
             border-radius: 8px;
@@ -480,6 +498,10 @@
                     <h3>Actions</h3>
                     <button id="undoBtn" class="btn-warning" disabled>Undo Last Action</button>
                     <button id="newBoardBtn" class="btn-primary">New Board</button>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="skipRoadsToggle">
+                        <span>Skip road placement</span>
+                    </label>
                 </div>
 
                 <div class="control-section">
@@ -650,42 +672,146 @@
             return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
         }
 
-        // Generate board
-        function generateBoard() {
-            // Create resource tiles
-            const resources = [];
-            for (const [resource, count] of Object.entries(RESOURCE_COUNTS)) {
-                for (let i = 0; i < count; i++) {
-                    resources.push(resource);
+        // Axial coordinate directions for adjacent hexes
+        const HEX_DIRECTIONS = [
+            { q: 1, r: 0 }, { q: -1, r: 0 },
+            { q: 0, r: 1 }, { q: 0, r: -1 },
+            { q: 1, r: -1 }, { q: -1, r: 1 }
+        ];
+
+        // Get indices of hexes adjacent to the given hex
+        function getAdjacentHexIndices(hexIndex, hexes) {
+            const hex = hexes[hexIndex];
+            const adjacent = [];
+
+            for (const dir of HEX_DIRECTIONS) {
+                const adjQ = hex.q + dir.q;
+                const adjR = hex.r + dir.r;
+
+                const adjIndex = hexes.findIndex(h => h.q === adjQ && h.r === adjR);
+                if (adjIndex !== -1) {
+                    adjacent.push(adjIndex);
                 }
             }
-            const shuffledResources = shuffle(resources);
 
-            // Assign numbers (skip desert)
-            const numbers = shuffle([...NUMBER_TOKENS]);
-            let numberIndex = 0;
+            return adjacent;
+        }
 
-            gameState.hexes = HEX_POSITIONS.map((pos, i) => {
-                const resource = shuffledResources[i];
-                const pixel = hexToPixel(pos.q, pos.r);
-                let number = null;
+        // Get vertices (intersections) and their adjacent hex indices
+        function getVerticesWithAdjacentHexes(hexes) {
+            const vertexMap = new Map(); // key -> Set of hex indices
 
-                if (resource === 'desert') {
-                    gameState.robberHex = i;
-                } else {
-                    number = numbers[numberIndex++];
+            hexes.forEach((hex, hexIndex) => {
+                const corners = getHexCorners(hex.x, hex.y);
+                corners.forEach(corner => {
+                    const key = vertexKey(corner.x, corner.y);
+                    if (!vertexMap.has(key)) {
+                        vertexMap.set(key, new Set());
+                    }
+                    vertexMap.get(key).add(hexIndex);
+                });
+            });
+
+            return vertexMap;
+        }
+
+        // Validate board against Catan rules
+        function isValidBoard(hexes) {
+            // Rule 1 & 2: Check adjacent hexes for 6/8 touching and same numbers
+            for (let i = 0; i < hexes.length; i++) {
+                const hex = hexes[i];
+                if (hex.number === null) continue; // Skip desert
+
+                const adjacentIndices = getAdjacentHexIndices(i, hexes);
+
+                for (const adjIndex of adjacentIndices) {
+                    const adjHex = hexes[adjIndex];
+                    if (adjHex.number === null) continue; // Skip desert
+
+                    // Rule 1: 6 and 8 can't touch each other
+                    if ((hex.number === 6 && adjHex.number === 8) ||
+                        (hex.number === 8 && adjHex.number === 6)) {
+                        return false;
+                    }
+
+                    // Rule 2: Same numbers can't touch each other
+                    if (hex.number === adjHex.number) {
+                        return false;
+                    }
+                }
+            }
+
+            // Rule 3: No vertex can have 13+ pips
+            const vertexMap = getVerticesWithAdjacentHexes(hexes);
+
+            for (const [key, hexIndices] of vertexMap) {
+                let totalPips = 0;
+
+                for (const hexIndex of hexIndices) {
+                    const hex = hexes[hexIndex];
+                    if (hex.number !== null) {
+                        totalPips += NUMBER_PROBABILITY[hex.number] || 0;
+                    }
                 }
 
-                return {
-                    index: i,
-                    q: pos.q,
-                    r: pos.r,
-                    x: pixel.x,
-                    y: pixel.y,
-                    resource,
-                    number
-                };
-            });
+                if (totalPips >= 13) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Generate board
+        function generateBoard() {
+            const MAX_ATTEMPTS = 1000;
+            let attempts = 0;
+
+            // Create base resource array
+            const baseResources = [];
+            for (const [resource, count] of Object.entries(RESOURCE_COUNTS)) {
+                for (let i = 0; i < count; i++) {
+                    baseResources.push(resource);
+                }
+            }
+
+            do {
+                attempts++;
+
+                // Shuffle resources
+                const shuffledResources = shuffle(baseResources);
+
+                // Assign numbers (skip desert)
+                const numbers = shuffle([...NUMBER_TOKENS]);
+                let numberIndex = 0;
+
+                gameState.hexes = HEX_POSITIONS.map((pos, i) => {
+                    const resource = shuffledResources[i];
+                    const pixel = hexToPixel(pos.q, pos.r);
+                    let number = null;
+
+                    if (resource === 'desert') {
+                        gameState.robberHex = i;
+                    } else {
+                        number = numbers[numberIndex++];
+                    }
+
+                    return {
+                        index: i,
+                        q: pos.q,
+                        r: pos.r,
+                        x: pixel.x,
+                        y: pixel.y,
+                        resource,
+                        number
+                    };
+                });
+
+            } while (!isValidBoard(gameState.hexes) && attempts < MAX_ATTEMPTS);
+
+            if (attempts >= MAX_ATTEMPTS) {
+                console.warn(`Could not generate valid board after ${MAX_ATTEMPTS} attempts`);
+            }
 
             // Build vertex and edge maps
             buildVerticesAndEdges();
@@ -795,6 +921,20 @@
             return valid;
         }
 
+        // Helper function to advance to next player
+        function advanceToNextPlayer() {
+            gameState.placementIndex++;
+            if (gameState.placementIndex < gameState.placementOrder.length) {
+                gameState.currentPlayer = gameState.placementOrder[gameState.placementIndex];
+                gameState.phase = 'settlement';
+                if (gameState.placementIndex >= 4) {
+                    gameState.round = 2;
+                }
+            } else {
+                gameState.phase = 'done';
+            }
+        }
+
         // Placement actions
         function placeSettlement(key) {
             const vertex = gameState.vertices.get(key);
@@ -810,7 +950,14 @@
                 y: vertex.y
             });
 
-            gameState.phase = 'road';
+            // Check if skip roads toggle is enabled
+            const skipRoads = document.getElementById('skipRoadsToggle').checked;
+            if (skipRoads) {
+                advanceToNextPlayer();
+            } else {
+                gameState.phase = 'road';
+            }
+
             render();
             updateUI();
         }
@@ -828,16 +975,7 @@
             });
 
             // Move to next player
-            gameState.placementIndex++;
-            if (gameState.placementIndex < gameState.placementOrder.length) {
-                gameState.currentPlayer = gameState.placementOrder[gameState.placementIndex];
-                gameState.phase = 'settlement';
-                if (gameState.placementIndex >= 4) {
-                    gameState.round = 2;
-                }
-            } else {
-                gameState.phase = 'done';
-            }
+            advanceToNextPlayer();
 
             render();
             updateUI();
