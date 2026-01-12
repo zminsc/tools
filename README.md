@@ -4,7 +4,7 @@ A collection of browser-based utilities hosted at [tools.zminsc.dev](https://too
 
 ## Tools
 
-*No tools yet - check back soon!*
+- **[Catan Placement Practice](catan-practice.html)** - Practice opening settlement and road placement strategy for Catan with an interactive board simulator
 
 ## Development
 
