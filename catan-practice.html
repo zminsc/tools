@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catan Placement Practice</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 20px;
+        }
+
+        .game-layout {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .board-container {
+            background: #0f3460;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #board {
+            display: block;
+        }
+
+        .controls {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 280px;
+            max-width: 320px;
+        }
+
+        .control-section {
+            margin-bottom: 20px;
+        }
+
+        .control-section h3 {
+            margin: 0 0 12px 0;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            color: #888;
+            letter-spacing: 0.5px;
+        }
+
+        .turn-info {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .current-player {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .phase-info {
+            color: #aaa;
+            font-size: 0.9rem;
+        }
+
+        .player-colors {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 12px;
+        }
+
+        .player-dot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            opacity: 0.4;
+            transition: all 0.2s;
+        }
+
+        .player-dot.active {
+            opacity: 1;
+            border-color: white;
+            transform: scale(1.2);
+        }
+
+        .player-dot.p1 { background: #e74c3c; }
+        .player-dot.p2 { background: #3498db; }
+        .player-dot.p3 { background: #f39c12; }
+        .player-dot.p4 { background: #27ae60; }
+
+        button {
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        button:last-child {
+            margin-bottom: 0;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+
+        .btn-secondary {
+            background: #34495e;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #2c3e50;
+        }
+
+        .btn-warning {
+            background: #e67e22;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d35400;
+        }
+
+        .btn-danger {
+            background: #c0392b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #a93226;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .instructions {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.85rem;
+            color: #aaa;
+            line-height: 1.5;
+        }
+
+        .instructions p {
+            margin: 0 0 8px 0;
+        }
+
+        .instructions p:last-child {
+            margin-bottom: 0;
+        }
+
+        .placement-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .stat-item {
+            background: #1a1a2e;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        /* SVG styles */
+        .hex {
+            stroke: #1a1a2e;
+            stroke-width: 2;
+            cursor: default;
+        }
+
+        .hex-forest { fill: #2d5a27; }
+        .hex-field { fill: #d4a017; }
+        .hex-pasture { fill: #7cb342; }
+        .hex-hill { fill: #b85c38; }
+        .hex-mountain { fill: #5d6d7e; }
+        .hex-desert { fill: #d4b896; }
+        .hex-water { fill: #1a5276; }
+
+        .number-token {
+            fill: #f5e6c8;
+            stroke: #333;
+            stroke-width: 1;
+        }
+
+        .number-text {
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            text-anchor: middle;
+            dominant-baseline: central;
+            fill: #333;
+        }
+
+        .number-text.high-prob {
+            fill: #c0392b;
+        }
+
+        .dots {
+            font-size: 8px;
+            text-anchor: middle;
+            fill: #666;
+        }
+
+        .port-bg {
+            fill: #2c3e50;
+            stroke: #1a1a2e;
+            stroke-width: 1;
+        }
+
+        .port-text {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            text-anchor: middle;
+            dominant-baseline: central;
+            fill: white;
+            font-weight: bold;
+        }
+
+        .vertex {
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .vertex-hint {
+            fill: rgba(255, 255, 255, 0.3);
+            stroke: rgba(255, 255, 255, 0.5);
+            stroke-width: 1;
+        }
+
+        .vertex-hint:hover {
+            fill: rgba(255, 255, 255, 0.6);
+            transform-origin: center;
+        }
+
+        .settlement {
+            stroke: #1a1a2e;
+            stroke-width: 2;
+        }
+
+        .settlement.p1 { fill: #e74c3c; }
+        .settlement.p2 { fill: #3498db; }
+        .settlement.p3 { fill: #f39c12; }
+        .settlement.p4 { fill: #27ae60; }
+
+        .edge {
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .edge-hint {
+            stroke: rgba(255, 255, 255, 0.3);
+            stroke-width: 6;
+            stroke-linecap: round;
+        }
+
+        .edge-hint:hover {
+            stroke: rgba(255, 255, 255, 0.6);
+        }
+
+        .road {
+            stroke-width: 8;
+            stroke-linecap: round;
+        }
+
+        .road.p1 { stroke: #e74c3c; }
+        .road.p2 { stroke: #3498db; }
+        .road.p3 { stroke: #f39c12; }
+        .road.p4 { stroke: #27ae60; }
+
+        .robber {
+            fill: #1a1a2e;
+            stroke: #333;
+            stroke-width: 1;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+        }
+
+        .modal {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .modal h2 {
+            margin: 0 0 16px 0;
+            font-size: 1.2rem;
+        }
+
+        .modal p {
+            margin: 0 0 20px 0;
+            color: #aaa;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            margin: 0;
+        }
+
+        /* Load modal */
+        .modal textarea {
+            width: 100%;
+            height: 120px;
+            background: #1a1a2e;
+            border: 1px solid #34495e;
+            border-radius: 6px;
+            color: #eee;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            resize: vertical;
+            margin-bottom: 16px;
+        }
+
+        .modal textarea:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #27ae60;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 500;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 200;
+        }
+
+        .toast.visible {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.error {
+            background: #c0392b;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.4rem;
+            }
+
+            .game-layout {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .controls {
+                width: 100%;
+                max-width: none;
+            }
+
+            .board-container {
+                padding: 10px;
+                width: 100%;
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Catan Placement Practice</h1>
+        <p class="subtitle">Practice your opening placement strategy</p>
+
+        <div class="game-layout">
+            <div class="board-container">
+                <svg id="board" width="580" height="540"></svg>
+            </div>
+
+            <div class="controls">
+                <div class="control-section">
+                    <h3>Current Turn</h3>
+                    <div class="turn-info">
+                        <div class="current-player" id="currentPlayer">Player 1</div>
+                        <div class="phase-info" id="phaseInfo">Place a settlement</div>
+                        <div class="player-colors">
+                            <div class="player-dot p1 active" data-player="1"></div>
+                            <div class="player-dot p2" data-player="2"></div>
+                            <div class="player-dot p3" data-player="3"></div>
+                            <div class="player-dot p4" data-player="4"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>Actions</h3>
+                    <button id="undoBtn" class="btn-warning" disabled>Undo Last Action</button>
+                    <button id="newBoardBtn" class="btn-primary">New Board</button>
+                </div>
+
+                <div class="control-section">
+                    <h3>Save / Load</h3>
+                    <button id="saveBtn" class="btn-secondary">Copy Board to Clipboard</button>
+                    <button id="loadBtn" class="btn-secondary">Load Board from Text</button>
+                </div>
+
+                <div class="control-section">
+                    <h3>Placements</h3>
+                    <div class="placement-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">Settlements</div>
+                            <div class="stat-value" id="settlementCount">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Roads</div>
+                            <div class="stat-value" id="roadCount">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>Instructions</h3>
+                    <div class="instructions">
+                        <p><strong>Setup Phase:</strong> Players 1-4 place settlements, then 4-1 place second settlements (snake draft).</p>
+                        <p><strong>Hints:</strong> White circles show valid settlement spots. White lines show valid road spots.</p>
+                        <p><strong>Tip:</strong> Click on highlighted spots to place.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm New Board Modal -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <h2>Generate New Board?</h2>
+            <p>This will clear all current settlements and roads. Are you sure?</p>
+            <div class="modal-buttons">
+                <button class="btn-secondary" id="confirmCancel">Cancel</button>
+                <button class="btn-danger" id="confirmYes">Yes, New Board</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Board Modal -->
+    <div class="modal-overlay" id="loadModal">
+        <div class="modal">
+            <h2>Load Board Configuration</h2>
+            <textarea id="loadInput" placeholder="Paste board configuration here..."></textarea>
+            <div class="modal-buttons">
+                <button class="btn-secondary" id="loadCancel">Cancel</button>
+                <button class="btn-primary" id="loadConfirm">Load</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // Constants
+        const HEX_SIZE = 50;
+        const BOARD_CENTER_X = 290;
+        const BOARD_CENTER_Y = 270;
+
+        const RESOURCES = ['forest', 'field', 'pasture', 'hill', 'mountain', 'desert'];
+        const RESOURCE_COUNTS = { forest: 4, field: 4, pasture: 4, hill: 3, mountain: 3, desert: 1 };
+        const RESOURCE_COLORS = {
+            forest: '#2d5a27',
+            field: '#d4a017',
+            pasture: '#7cb342',
+            hill: '#b85c38',
+            mountain: '#5d6d7e',
+            desert: '#d4b896'
+        };
+
+        const NUMBER_TOKENS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
+        const NUMBER_PROBABILITY = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1 };
+
+        const PLAYER_COLORS = ['#e74c3c', '#3498db', '#f39c12', '#27ae60'];
+
+        // Hex grid layout (axial coordinates) - standard Catan board
+        const HEX_POSITIONS = [
+            // Row 0 (top)
+            { q: 0, r: -2 }, { q: 1, r: -2 }, { q: 2, r: -2 },
+            // Row 1
+            { q: -1, r: -1 }, { q: 0, r: -1 }, { q: 1, r: -1 }, { q: 2, r: -1 },
+            // Row 2 (middle)
+            { q: -2, r: 0 }, { q: -1, r: 0 }, { q: 0, r: 0 }, { q: 1, r: 0 }, { q: 2, r: 0 },
+            // Row 3
+            { q: -2, r: 1 }, { q: -1, r: 1 }, { q: 0, r: 1 }, { q: 1, r: 1 },
+            // Row 4 (bottom)
+            { q: -2, r: 2 }, { q: -1, r: 2 }, { q: 0, r: 2 }
+        ];
+
+        // Port positions (edge of board)
+        const PORT_POSITIONS = [
+            { hex1: 0, hex2: null, edge: 0, type: '3:1' },
+            { hex1: 1, hex2: null, edge: 1, type: 'wheat' },
+            { hex1: 3, hex2: null, edge: 5, type: 'ore' },
+            { hex1: 6, hex2: null, edge: 1, type: 'sheep' },
+            { hex1: 7, hex2: null, edge: 4, type: '3:1' },
+            { hex1: 11, hex2: null, edge: 2, type: '3:1' },
+            { hex1: 12, hex2: null, edge: 4, type: '3:1' },
+            { hex1: 15, hex2: null, edge: 2, type: 'brick' },
+            { hex1: 16, hex2: null, edge: 3, type: 'wood' }
+        ];
+
+        // Game state
+        let gameState = {
+            hexes: [],
+            vertices: new Map(), // key: "x,y" (rounded), value: { settlement: null or { player } }
+            edges: new Map(), // key: "x1,y1-x2,y2" (sorted), value: { road: null or { player } }
+            currentPlayer: 1,
+            phase: 'settlement', // 'settlement' or 'road'
+            round: 1, // 1 = first placement (1-4), 2 = second placement (4-1)
+            placementOrder: [1, 2, 3, 4, 4, 3, 2, 1], // Snake draft
+            placementIndex: 0,
+            history: [], // For undo
+            robberHex: -1
+        };
+
+        // Helper functions
+        function hexToPixel(q, r) {
+            const x = HEX_SIZE * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r) + BOARD_CENTER_X;
+            const y = HEX_SIZE * (3 / 2 * r) + BOARD_CENTER_Y;
+            return { x, y };
+        }
+
+        function getHexCorners(cx, cy) {
+            const corners = [];
+            for (let i = 0; i < 6; i++) {
+                const angle = Math.PI / 180 * (60 * i - 30);
+                corners.push({
+                    x: cx + HEX_SIZE * Math.cos(angle),
+                    y: cy + HEX_SIZE * Math.sin(angle)
+                });
+            }
+            return corners;
+        }
+
+        function roundCoord(val) {
+            return Math.round(val * 10) / 10;
+        }
+
+        function vertexKey(x, y) {
+            return `${roundCoord(x)},${roundCoord(y)}`;
+        }
+
+        function edgeKey(x1, y1, x2, y2) {
+            const k1 = vertexKey(x1, y1);
+            const k2 = vertexKey(x2, y2);
+            return k1 < k2 ? `${k1}-${k2}` : `${k2}-${k1}`;
+        }
+
+        function shuffle(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function distance(x1, y1, x2, y2) {
+            return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+        }
+
+        // Generate board
+        function generateBoard() {
+            // Create resource tiles
+            const resources = [];
+            for (const [resource, count] of Object.entries(RESOURCE_COUNTS)) {
+                for (let i = 0; i < count; i++) {
+                    resources.push(resource);
+                }
+            }
+            const shuffledResources = shuffle(resources);
+
+            // Assign numbers (skip desert)
+            const numbers = shuffle([...NUMBER_TOKENS]);
+            let numberIndex = 0;
+
+            gameState.hexes = HEX_POSITIONS.map((pos, i) => {
+                const resource = shuffledResources[i];
+                const pixel = hexToPixel(pos.q, pos.r);
+                let number = null;
+
+                if (resource === 'desert') {
+                    gameState.robberHex = i;
+                } else {
+                    number = numbers[numberIndex++];
+                }
+
+                return {
+                    index: i,
+                    q: pos.q,
+                    r: pos.r,
+                    x: pixel.x,
+                    y: pixel.y,
+                    resource,
+                    number
+                };
+            });
+
+            // Build vertex and edge maps
+            buildVerticesAndEdges();
+        }
+
+        function buildVerticesAndEdges() {
+            gameState.vertices.clear();
+            gameState.edges.clear();
+
+            gameState.hexes.forEach(hex => {
+                const corners = getHexCorners(hex.x, hex.y);
+
+                // Add vertices
+                corners.forEach(corner => {
+                    const key = vertexKey(corner.x, corner.y);
+                    if (!gameState.vertices.has(key)) {
+                        gameState.vertices.set(key, {
+                            x: corner.x,
+                            y: corner.y,
+                            settlement: null,
+                            adjacentHexes: []
+                        });
+                    }
+                    gameState.vertices.get(key).adjacentHexes.push(hex.index);
+                });
+
+                // Add edges
+                for (let i = 0; i < 6; i++) {
+                    const c1 = corners[i];
+                    const c2 = corners[(i + 1) % 6];
+                    const key = edgeKey(c1.x, c1.y, c2.x, c2.y);
+                    if (!gameState.edges.has(key)) {
+                        gameState.edges.set(key, {
+                            x1: c1.x, y1: c1.y,
+                            x2: c2.x, y2: c2.y,
+                            road: null
+                        });
+                    }
+                }
+            });
+        }
+
+        function resetPlacements() {
+            gameState.vertices.forEach(v => v.settlement = null);
+            gameState.edges.forEach(e => e.road = null);
+            gameState.currentPlayer = 1;
+            gameState.phase = 'settlement';
+            gameState.round = 1;
+            gameState.placementIndex = 0;
+            gameState.history = [];
+        }
+
+        // Valid placement checks
+        function getValidSettlementVertices() {
+            const valid = [];
+
+            gameState.vertices.forEach((vertex, key) => {
+                if (vertex.settlement) return;
+
+                // Check distance rule (no settlement within 2 edges)
+                let tooClose = false;
+                gameState.vertices.forEach((other, otherKey) => {
+                    if (other.settlement && distance(vertex.x, vertex.y, other.x, other.y) < HEX_SIZE * 1.1) {
+                        tooClose = true;
+                    }
+                });
+                if (tooClose) return;
+
+                // In setup phase, any valid spot works for first settlement
+                // For second settlement, must also be valid
+                valid.push({ key, ...vertex });
+            });
+
+            return valid;
+        }
+
+        function getValidRoadEdges() {
+            const valid = [];
+            const player = gameState.currentPlayer;
+
+            // Find the most recently placed settlement by this player
+            let lastSettlement = null;
+            for (let i = gameState.history.length - 1; i >= 0; i--) {
+                const action = gameState.history[i];
+                if (action.type === 'settlement' && action.player === player) {
+                    lastSettlement = action;
+                    break;
+                }
+            }
+
+            gameState.edges.forEach((edge, key) => {
+                if (edge.road) return;
+
+                // Road must connect to the settlement just placed
+                if (lastSettlement) {
+                    const settleX = lastSettlement.x;
+                    const settleY = lastSettlement.y;
+                    const d1 = distance(edge.x1, edge.y1, settleX, settleY);
+                    const d2 = distance(edge.x2, edge.y2, settleX, settleY);
+
+                    if (d1 < 1 || d2 < 1) {
+                        valid.push({ key, ...edge });
+                    }
+                }
+            });
+
+            return valid;
+        }
+
+        // Placement actions
+        function placeSettlement(key) {
+            const vertex = gameState.vertices.get(key);
+            if (!vertex) return;
+
+            vertex.settlement = { player: gameState.currentPlayer };
+
+            gameState.history.push({
+                type: 'settlement',
+                key,
+                player: gameState.currentPlayer,
+                x: vertex.x,
+                y: vertex.y
+            });
+
+            gameState.phase = 'road';
+            render();
+            updateUI();
+        }
+
+        function placeRoad(key) {
+            const edge = gameState.edges.get(key);
+            if (!edge) return;
+
+            edge.road = { player: gameState.currentPlayer };
+
+            gameState.history.push({
+                type: 'road',
+                key,
+                player: gameState.currentPlayer
+            });
+
+            // Move to next player
+            gameState.placementIndex++;
+            if (gameState.placementIndex < gameState.placementOrder.length) {
+                gameState.currentPlayer = gameState.placementOrder[gameState.placementIndex];
+                gameState.phase = 'settlement';
+                if (gameState.placementIndex >= 4) {
+                    gameState.round = 2;
+                }
+            } else {
+                gameState.phase = 'done';
+            }
+
+            render();
+            updateUI();
+        }
+
+        function undo() {
+            if (gameState.history.length === 0) return;
+
+            const lastAction = gameState.history.pop();
+
+            if (lastAction.type === 'settlement') {
+                const vertex = gameState.vertices.get(lastAction.key);
+                if (vertex) vertex.settlement = null;
+                gameState.phase = 'settlement';
+                gameState.currentPlayer = lastAction.player;
+            } else if (lastAction.type === 'road') {
+                const edge = gameState.edges.get(lastAction.key);
+                if (edge) edge.road = null;
+                gameState.phase = 'road';
+                gameState.currentPlayer = lastAction.player;
+                gameState.placementIndex--;
+                if (gameState.placementIndex < 4) {
+                    gameState.round = 1;
+                }
+            }
+
+            render();
+            updateUI();
+        }
+
+        // Rendering
+        function render() {
+            const svg = document.getElementById('board');
+            svg.innerHTML = '';
+
+            // Draw water background
+            const waterBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            waterBg.setAttribute('width', '100%');
+            waterBg.setAttribute('height', '100%');
+            waterBg.setAttribute('fill', '#1a5276');
+            svg.appendChild(waterBg);
+
+            // Draw hexes
+            gameState.hexes.forEach(hex => {
+                drawHex(svg, hex);
+            });
+
+            // Draw ports
+            drawPorts(svg);
+
+            // Draw roads
+            gameState.edges.forEach((edge, key) => {
+                if (edge.road) {
+                    drawRoad(svg, edge, edge.road.player);
+                }
+            });
+
+            // Draw valid road hints
+            if (gameState.phase === 'road') {
+                const validEdges = getValidRoadEdges();
+                validEdges.forEach(edge => {
+                    drawEdgeHint(svg, edge);
+                });
+            }
+
+            // Draw settlements
+            gameState.vertices.forEach((vertex, key) => {
+                if (vertex.settlement) {
+                    drawSettlement(svg, vertex.x, vertex.y, vertex.settlement.player);
+                }
+            });
+
+            // Draw valid settlement hints
+            if (gameState.phase === 'settlement') {
+                const validVertices = getValidSettlementVertices();
+                validVertices.forEach(vertex => {
+                    drawVertexHint(svg, vertex);
+                });
+            }
+
+            // Draw robber
+            const robberHex = gameState.hexes[gameState.robberHex];
+            if (robberHex) {
+                drawRobber(svg, robberHex.x, robberHex.y);
+            }
+        }
+
+        function drawHex(svg, hex) {
+            const corners = getHexCorners(hex.x, hex.y);
+            const points = corners.map(c => `${c.x},${c.y}`).join(' ');
+
+            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            polygon.setAttribute('points', points);
+            polygon.setAttribute('class', `hex hex-${hex.resource}`);
+            svg.appendChild(polygon);
+
+            // Draw number token (except desert)
+            if (hex.number) {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', hex.x);
+                circle.setAttribute('cy', hex.y);
+                circle.setAttribute('r', 18);
+                circle.setAttribute('class', 'number-token');
+                svg.appendChild(circle);
+
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', hex.x);
+                text.setAttribute('y', hex.y - 3);
+                text.setAttribute('class', `number-text ${(hex.number === 6 || hex.number === 8) ? 'high-prob' : ''}`);
+                text.setAttribute('font-size', '16');
+                text.textContent = hex.number;
+                svg.appendChild(text);
+
+                // Probability dots
+                const prob = NUMBER_PROBABILITY[hex.number] || 0;
+                const dots = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                dots.setAttribute('x', hex.x);
+                dots.setAttribute('y', hex.y + 12);
+                dots.setAttribute('class', 'dots');
+                dots.textContent = '•'.repeat(prob);
+                svg.appendChild(dots);
+            }
+        }
+
+        function drawPorts(svg) {
+            const portData = [
+                { x: 170, y: 45, type: '3:1', angle: -30 },
+                { x: 290, y: 20, type: 'wheat', angle: 0 },
+                { x: 95, y: 130, type: 'ore', angle: -60 },
+                { x: 430, y: 70, type: 'sheep', angle: 30 },
+                { x: 50, y: 250, type: '3:1', angle: -90 },
+                { x: 510, y: 180, type: '3:1', angle: 60 },
+                { x: 70, y: 380, type: '3:1', angle: -120 },
+                { x: 490, y: 320, type: 'brick', angle: 90 },
+                { x: 170, y: 480, type: 'wood', angle: -150 }
+            ];
+
+            const portColors = {
+                '3:1': '#7f8c8d',
+                'wood': '#2d5a27',
+                'wheat': '#d4a017',
+                'sheep': '#7cb342',
+                'brick': '#b85c38',
+                'ore': '#5d6d7e'
+            };
+
+            portData.forEach(port => {
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', port.x - 20);
+                rect.setAttribute('y', port.y - 12);
+                rect.setAttribute('width', 40);
+                rect.setAttribute('height', 24);
+                rect.setAttribute('rx', 4);
+                rect.setAttribute('fill', portColors[port.type] || '#7f8c8d');
+                rect.setAttribute('stroke', '#1a1a2e');
+                rect.setAttribute('stroke-width', 2);
+                g.appendChild(rect);
+
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', port.x);
+                text.setAttribute('y', port.y + 1);
+                text.setAttribute('class', 'port-text');
+                text.textContent = port.type === '3:1' ? '3:1' : '2:1';
+                g.appendChild(text);
+
+                svg.appendChild(g);
+            });
+        }
+
+        function drawSettlement(svg, x, y, player) {
+            // House shape
+            const size = 12;
+            const points = [
+                `${x},${y - size}`,           // top
+                `${x + size},${y - size/3}`,  // right top
+                `${x + size},${y + size}`,    // right bottom
+                `${x - size},${y + size}`,    // left bottom
+                `${x - size},${y - size/3}`   // left top
+            ].join(' ');
+
+            const house = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            house.setAttribute('points', points);
+            house.setAttribute('class', `settlement p${player}`);
+            svg.appendChild(house);
+        }
+
+        function drawRoad(svg, edge, player) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', edge.x1);
+            line.setAttribute('y1', edge.y1);
+            line.setAttribute('x2', edge.x2);
+            line.setAttribute('y2', edge.y2);
+            line.setAttribute('class', `road p${player}`);
+            svg.appendChild(line);
+        }
+
+        function drawVertexHint(svg, vertex) {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', vertex.x);
+            circle.setAttribute('cy', vertex.y);
+            circle.setAttribute('r', 10);
+            circle.setAttribute('class', 'vertex vertex-hint');
+            circle.setAttribute('data-key', vertex.key);
+            circle.addEventListener('click', () => placeSettlement(vertex.key));
+            svg.appendChild(circle);
+        }
+
+        function drawEdgeHint(svg, edge) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', edge.x1);
+            line.setAttribute('y1', edge.y1);
+            line.setAttribute('x2', edge.x2);
+            line.setAttribute('y2', edge.y2);
+            line.setAttribute('class', 'edge edge-hint');
+            line.setAttribute('data-key', edge.key);
+            line.addEventListener('click', () => placeRoad(edge.key));
+            svg.appendChild(line);
+        }
+
+        function drawRobber(svg, x, y) {
+            // Simple robber figure
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+            // Body
+            const body = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+            body.setAttribute('cx', x);
+            body.setAttribute('cy', y + 5);
+            body.setAttribute('rx', 8);
+            body.setAttribute('ry', 12);
+            body.setAttribute('class', 'robber');
+            g.appendChild(body);
+
+            // Head
+            const head = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            head.setAttribute('cx', x);
+            head.setAttribute('cy', y - 10);
+            head.setAttribute('r', 6);
+            head.setAttribute('class', 'robber');
+            g.appendChild(head);
+
+            svg.appendChild(g);
+        }
+
+        // UI updates
+        function updateUI() {
+            // Update current player display
+            const playerNames = ['', 'Player 1 (Red)', 'Player 2 (Blue)', 'Player 3 (Orange)', 'Player 4 (Green)'];
+            document.getElementById('currentPlayer').textContent =
+                gameState.phase === 'done' ? 'Setup Complete!' : playerNames[gameState.currentPlayer];
+
+            // Update phase info
+            let phaseText = '';
+            if (gameState.phase === 'settlement') {
+                const placement = gameState.placementIndex < 4 ? '1st' : '2nd';
+                phaseText = `Place ${placement} settlement`;
+            } else if (gameState.phase === 'road') {
+                phaseText = 'Place a road';
+            } else {
+                phaseText = 'All placements complete';
+            }
+            document.getElementById('phaseInfo').textContent = phaseText;
+
+            // Update player dots
+            document.querySelectorAll('.player-dot').forEach(dot => {
+                const player = parseInt(dot.dataset.player);
+                dot.classList.toggle('active', player === gameState.currentPlayer && gameState.phase !== 'done');
+            });
+
+            // Update undo button
+            document.getElementById('undoBtn').disabled = gameState.history.length === 0;
+
+            // Update stats
+            let settlements = 0, roads = 0;
+            gameState.vertices.forEach(v => { if (v.settlement) settlements++; });
+            gameState.edges.forEach(e => { if (e.road) roads++; });
+            document.getElementById('settlementCount').textContent = settlements;
+            document.getElementById('roadCount').textContent = roads;
+        }
+
+        // Save/Load
+        function saveBoard() {
+            const data = {
+                hexes: gameState.hexes.map(h => ({ resource: h.resource, number: h.number })),
+                settlements: [],
+                roads: [],
+                currentPlayer: gameState.currentPlayer,
+                phase: gameState.phase,
+                placementIndex: gameState.placementIndex,
+                robberHex: gameState.robberHex
+            };
+
+            gameState.vertices.forEach((v, key) => {
+                if (v.settlement) {
+                    data.settlements.push({ key, player: v.settlement.player });
+                }
+            });
+
+            gameState.edges.forEach((e, key) => {
+                if (e.road) {
+                    data.roads.push({ key, player: e.road.player });
+                }
+            });
+
+            return btoa(JSON.stringify(data));
+        }
+
+        function loadBoard(encoded) {
+            try {
+                const data = JSON.parse(atob(encoded));
+
+                // Restore hexes
+                data.hexes.forEach((h, i) => {
+                    gameState.hexes[i].resource = h.resource;
+                    gameState.hexes[i].number = h.number;
+                });
+
+                gameState.robberHex = data.robberHex;
+
+                // Reset placements
+                gameState.vertices.forEach(v => v.settlement = null);
+                gameState.edges.forEach(e => e.road = null);
+                gameState.history = [];
+
+                // Restore settlements
+                data.settlements.forEach(s => {
+                    const vertex = gameState.vertices.get(s.key);
+                    if (vertex) {
+                        vertex.settlement = { player: s.player };
+                        gameState.history.push({
+                            type: 'settlement',
+                            key: s.key,
+                            player: s.player,
+                            x: vertex.x,
+                            y: vertex.y
+                        });
+                    }
+                });
+
+                // Restore roads
+                data.roads.forEach(r => {
+                    const edge = gameState.edges.get(r.key);
+                    if (edge) {
+                        edge.road = { player: r.player };
+                        gameState.history.push({
+                            type: 'road',
+                            key: r.key,
+                            player: r.player
+                        });
+                    }
+                });
+
+                gameState.currentPlayer = data.currentPlayer;
+                gameState.phase = data.phase;
+                gameState.placementIndex = data.placementIndex;
+                gameState.round = data.placementIndex >= 4 ? 2 : 1;
+
+                render();
+                updateUI();
+                return true;
+            } catch (e) {
+                console.error('Failed to load board:', e);
+                return false;
+            }
+        }
+
+        // Toast notifications
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.toggle('error', isError);
+            toast.classList.add('visible');
+            setTimeout(() => toast.classList.remove('visible'), 2500);
+        }
+
+        // Event handlers
+        function setupEventHandlers() {
+            // Undo
+            document.getElementById('undoBtn').addEventListener('click', undo);
+
+            // New Board
+            document.getElementById('newBoardBtn').addEventListener('click', () => {
+                const hasPlacemements = gameState.history.length > 0;
+                if (hasPlacemements) {
+                    document.getElementById('confirmModal').classList.add('visible');
+                } else {
+                    generateBoard();
+                    resetPlacements();
+                    render();
+                    updateUI();
+                }
+            });
+
+            // Confirm modal
+            document.getElementById('confirmCancel').addEventListener('click', () => {
+                document.getElementById('confirmModal').classList.remove('visible');
+            });
+
+            document.getElementById('confirmYes').addEventListener('click', () => {
+                document.getElementById('confirmModal').classList.remove('visible');
+                generateBoard();
+                resetPlacements();
+                render();
+                updateUI();
+            });
+
+            // Save
+            document.getElementById('saveBtn').addEventListener('click', () => {
+                const data = saveBoard();
+                navigator.clipboard.writeText(data).then(() => {
+                    showToast('Board copied to clipboard!');
+                }).catch(() => {
+                    showToast('Failed to copy to clipboard', true);
+                });
+            });
+
+            // Load
+            document.getElementById('loadBtn').addEventListener('click', () => {
+                document.getElementById('loadInput').value = '';
+                document.getElementById('loadModal').classList.add('visible');
+            });
+
+            document.getElementById('loadCancel').addEventListener('click', () => {
+                document.getElementById('loadModal').classList.remove('visible');
+            });
+
+            document.getElementById('loadConfirm').addEventListener('click', () => {
+                const input = document.getElementById('loadInput').value.trim();
+                if (loadBoard(input)) {
+                    document.getElementById('loadModal').classList.remove('visible');
+                    showToast('Board loaded successfully!');
+                } else {
+                    showToast('Invalid board configuration', true);
+                }
+            });
+
+            // Close modals on overlay click
+            document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.classList.remove('visible');
+                    }
+                });
+            });
+        }
+
+        // Initialize
+        function init() {
+            generateBoard();
+            render();
+            updateUI();
+            setupEventHandlers();
+        }
+
+        init();
+    </script>
+</body>
+</html>
