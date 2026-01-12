@@ -55,6 +55,7 @@
             display: block;
             width: 100%;
             height: auto;
+            min-width: 480px;
             max-width: 580px;
         }
 
@@ -632,13 +633,14 @@
         // Port types to be shuffled (4 generic 3:1, 5 resource-specific 2:1)
         const PORT_TYPES = ['3:1', '3:1', '3:1', '3:1', 'wood', 'wheat', 'sheep', 'brick', 'ore'];
 
+        // Port colors - distinct and vibrant for easy identification
         const PORT_COLORS = {
-            '3:1': '#7f8c8d',
-            'wood': '#2d5a27',
-            'wheat': '#d4a017',
-            'sheep': '#7cb342',
-            'brick': '#b85c38',
-            'ore': '#5d6d7e'
+            '3:1': '#ffffff',    // White for generic ports
+            'wood': '#8B4513',   // Saddle brown (like lumber)
+            'wheat': '#FFD700',  // Gold (like grain)
+            'sheep': '#32CD32',  // Lime green (like wool/pasture)
+            'brick': '#DC143C',  // Crimson (like clay/brick)
+            'ore': '#4169E1'     // Royal blue (like ore/metal)
         };
 
         // Game state
@@ -896,6 +898,9 @@
             // Clear any existing port markers on vertices
             gameState.vertices.forEach(v => v.port = null);
 
+            // Track all port vertex keys to detect adjacency
+            const usedVertexKeys = new Set();
+
             // For each port position, get the two vertices of the edge
             PORT_EDGE_POSITIONS.forEach((pos, index) => {
                 const hex = gameState.hexes[pos.hexIndex];
@@ -908,6 +913,13 @@
                 const v1Key = vertexKey(c1.x, c1.y);
                 const v2Key = vertexKey(c2.x, c2.y);
                 const portType = shuffledTypes[index];
+
+                // Check for adjacency (shared vertex with another port)
+                if (usedVertexKeys.has(v1Key) || usedVertexKeys.has(v2Key)) {
+                    console.warn(`Port at hex ${pos.hexIndex} edge ${pos.edgeIndex} shares a vertex with another port!`);
+                }
+                usedVertexKeys.add(v1Key);
+                usedVertexKeys.add(v2Key);
 
                 // Store port info
                 gameState.ports.push({
@@ -1186,13 +1198,16 @@
         }
 
         function drawPortIndicator(svg, x, y, color) {
-            // Draw a small colored circle at the port vertex
+            // Draw a colored circle at the port vertex
             const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             circle.setAttribute('cx', x);
             circle.setAttribute('cy', y);
-            circle.setAttribute('r', 6);
+            circle.setAttribute('r', 8);
             circle.setAttribute('fill', color);
-            circle.setAttribute('stroke', '#fff');
+            // Use dark stroke for light colors (white, yellow), white stroke for dark colors
+            const lightColors = ['#ffffff', '#FFD700', '#32CD32'];
+            const strokeColor = lightColors.includes(color) ? '#1a1a2e' : '#fff';
+            circle.setAttribute('stroke', strokeColor);
             circle.setAttribute('stroke-width', 2);
             circle.setAttribute('class', 'port-indicator');
             svg.appendChild(circle);
