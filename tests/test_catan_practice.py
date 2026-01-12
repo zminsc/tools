@@ -502,32 +502,52 @@ def test_ports_at_coastal_edges(page: Page, static_server):
 
 
 def test_ports_not_adjacent(page: Page, static_server):
-    """Test that no two ports share a vertex (are not adjacent)."""
+    """Test that ports have at least one vertex between them (not on consecutive edges)."""
     page.goto("http://127.0.0.1:8123/catan-practice.html")
 
     result = page.evaluate("""
         () => {
-            const vertexUsage = new Map();
+            // Get all port vertex positions
+            const portVertices = gameState.ports.map(port => ({
+                v1: { x: port.x1, y: port.y1 },
+                v2: { x: port.x2, y: port.y2 }
+            }));
 
-            for (let i = 0; i < gameState.ports.length; i++) {
-                const port = gameState.ports[i];
+            // Helper to calculate distance between two points
+            function dist(p1, p2) {
+                return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+            }
 
-                // Check if either vertex is already used by another port
-                if (vertexUsage.has(port.vertex1Key)) {
-                    return {
-                        valid: false,
-                        error: `Ports ${vertexUsage.get(port.vertex1Key)} and ${i} share vertex ${port.vertex1Key}`
-                    };
+            // Edge length on the hex grid (distance between adjacent vertices)
+            const edgeLength = HEX_SIZE; // Approximate edge length
+
+            // Check each pair of ports
+            for (let i = 0; i < portVertices.length; i++) {
+                for (let j = i + 1; j < portVertices.length; j++) {
+                    const portA = portVertices[i];
+                    const portB = portVertices[j];
+
+                    // Check all vertex pairs between the two ports
+                    const pairs = [
+                        [portA.v1, portB.v1],
+                        [portA.v1, portB.v2],
+                        [portA.v2, portB.v1],
+                        [portA.v2, portB.v2]
+                    ];
+
+                    for (const [v1, v2] of pairs) {
+                        const d = dist(v1, v2);
+                        // Vertices are too close if they're the same (d ≈ 0)
+                        // or adjacent on the perimeter (d ≈ edgeLength)
+                        // Use tolerance of 1.1 * edgeLength to catch adjacent vertices
+                        if (d < edgeLength * 1.1) {
+                            return {
+                                valid: false,
+                                error: `Ports ${i} and ${j} are too close (vertex distance: ${d.toFixed(1)}, edge length: ${edgeLength})`
+                            };
+                        }
+                    }
                 }
-                if (vertexUsage.has(port.vertex2Key)) {
-                    return {
-                        valid: false,
-                        error: `Ports ${vertexUsage.get(port.vertex2Key)} and ${i} share vertex ${port.vertex2Key}`
-                    };
-                }
-
-                vertexUsage.set(port.vertex1Key, i);
-                vertexUsage.set(port.vertex2Key, i);
             }
             return { valid: true };
         }
