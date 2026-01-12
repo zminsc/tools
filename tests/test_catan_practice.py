@@ -244,3 +244,312 @@ def test_board_visible_on_small_mobile(page: Page, static_server):
     assert board_box["width"] <= 320, (
         f"Board width ({board_box['width']}px) should fit within small mobile viewport (320px)"
     )
+
+
+def test_skip_roads_toggle_exists(page: Page, static_server):
+    """Test that the skip roads toggle exists."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+    expect(page.locator("#skipRoadsToggle")).to_be_visible()
+
+
+def test_skip_roads_toggle_skips_road_phase(page: Page, static_server):
+    """Test that enabling skip roads toggle skips road placement phase."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Enable skip roads toggle
+    page.locator("#skipRoadsToggle").check()
+
+    # Place settlement
+    page.locator("#board .vertex-hint").first.click()
+
+    # Should skip road phase and go directly to Player 2
+    expect(page.locator("#currentPlayer")).to_have_text("Player 2 (Blue)")
+    expect(page.locator("#phaseInfo")).to_have_text("Place 1st settlement")
+    expect(page.locator("#roadCount")).to_have_text("0")
+
+
+def test_skip_roads_toggle_full_draft(page: Page, static_server):
+    """Test skip roads toggle allows completing full draft without roads."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Enable skip roads toggle
+    page.locator("#skipRoadsToggle").check()
+
+    expected_players = [
+        "Player 1 (Red)",
+        "Player 2 (Blue)",
+        "Player 3 (Orange)",
+        "Player 4 (Green)",
+        "Player 4 (Green)",
+        "Player 3 (Orange)",
+        "Player 2 (Blue)",
+        "Player 1 (Red)",
+    ]
+
+    for player in expected_players:
+        expect(page.locator("#currentPlayer")).to_have_text(player)
+        page.locator("#board .vertex-hint").first.click()
+
+    # After all placements, setup should be complete
+    expect(page.locator("#currentPlayer")).to_have_text("Setup Complete!")
+    expect(page.locator("#settlementCount")).to_have_text("8")
+    expect(page.locator("#roadCount")).to_have_text("0")
+
+
+def test_board_validation_six_eight_not_adjacent(page: Page, static_server):
+    """Test that 6 and 8 are never adjacent on the generated board."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Check board validation via JavaScript
+    result = page.evaluate("""
+        () => {
+            // Get all pairs of adjacent hexes with numbers
+            for (let i = 0; i < gameState.hexes.length; i++) {
+                const hex = gameState.hexes[i];
+                if (hex.number === null) continue;
+
+                const adjacentIndices = getAdjacentHexIndices(i, gameState.hexes);
+                for (const adjIndex of adjacentIndices) {
+                    const adjHex = gameState.hexes[adjIndex];
+                    if (adjHex.number === null) continue;
+
+                    // Check if 6 and 8 are adjacent
+                    if ((hex.number === 6 && adjHex.number === 8) ||
+                        (hex.number === 8 && adjHex.number === 6)) {
+                        return { valid: false, error: `6 and 8 are adjacent at hexes ${i} and ${adjIndex}` };
+                    }
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown validation error")
+
+
+def test_board_validation_same_numbers_not_adjacent(page: Page, static_server):
+    """Test that same numbers are never adjacent on the generated board."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            for (let i = 0; i < gameState.hexes.length; i++) {
+                const hex = gameState.hexes[i];
+                if (hex.number === null) continue;
+
+                const adjacentIndices = getAdjacentHexIndices(i, gameState.hexes);
+                for (const adjIndex of adjacentIndices) {
+                    const adjHex = gameState.hexes[adjIndex];
+                    if (adjHex.number === null) continue;
+
+                    // Check if same numbers are adjacent
+                    if (hex.number === adjHex.number) {
+                        return { valid: false, error: `Same number ${hex.number} at adjacent hexes ${i} and ${adjIndex}` };
+                    }
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown validation error")
+
+
+def test_board_validation_no_13_pips_vertex(page: Page, static_server):
+    """Test that no vertex has 13 or more pips."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            const vertexMap = getVerticesWithAdjacentHexes(gameState.hexes);
+
+            for (const [key, hexIndices] of vertexMap) {
+                let totalPips = 0;
+                const numbers = [];
+
+                for (const hexIndex of hexIndices) {
+                    const hex = gameState.hexes[hexIndex];
+                    if (hex.number !== null) {
+                        totalPips += NUMBER_PROBABILITY[hex.number] || 0;
+                        numbers.push(hex.number);
+                    }
+                }
+
+                if (totalPips >= 13) {
+                    return { valid: false, error: `Vertex ${key} has ${totalPips} pips (numbers: ${numbers.join(', ')})` };
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown validation error")
+
+
+def test_board_validation_multiple_boards(page: Page, static_server):
+    """Test that multiple board generations all pass validation."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Generate and validate 10 boards
+    for i in range(10):
+        page.locator("#newBoardBtn").click()
+
+        # Check all validation rules
+        result = page.evaluate("""
+            () => {
+                return isValidBoard(gameState.hexes);
+            }
+        """)
+        assert result, f"Board {i + 1} failed validation"
+
+
+def test_ports_are_rendered(page: Page, static_server):
+    """Test that port indicators are rendered on the board."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Port indicators should be visible (2 per port = 18 total for 9 ports)
+    port_indicators = page.locator("#board .port-indicator")
+    expect(port_indicators).to_have_count(18)
+
+
+def test_ports_count(page: Page, static_server):
+    """Test that exactly 9 ports are generated."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            return gameState.ports.length;
+        }
+    """)
+    assert result == 9, f"Expected 9 ports, got {result}"
+
+
+def test_port_types_distribution(page: Page, static_server):
+    """Test that ports have correct type distribution (4x 3:1, 5x resource)."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            const typeCounts = {};
+            for (const port of gameState.ports) {
+                typeCounts[port.type] = (typeCounts[port.type] || 0) + 1;
+            }
+            return typeCounts;
+        }
+    """)
+
+    # Should have 4 generic 3:1 ports
+    assert result.get("3:1", 0) == 4, f"Expected 4 generic ports, got {result.get('3:1', 0)}"
+
+    # Should have exactly 1 of each resource port
+    resource_ports = ["wood", "wheat", "sheep", "brick", "ore"]
+    for resource in resource_ports:
+        assert result.get(resource, 0) == 1, f"Expected 1 {resource} port, got {result.get(resource, 0)}"
+
+
+def test_port_types_randomized(page: Page, static_server):
+    """Test that port types are randomized between board generations."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    # Get port types for multiple boards
+    port_type_configs = []
+    for i in range(5):
+        if i > 0:
+            page.locator("#newBoardBtn").click()
+
+        types = page.evaluate("""
+            () => gameState.ports.map(p => p.type)
+        """)
+        port_type_configs.append(tuple(types))
+
+    # At least 2 different configurations should exist
+    unique_configs = set(port_type_configs)
+    assert len(unique_configs) >= 2, "Port types should be randomized between board generations"
+
+
+def test_ports_at_coastal_edges(page: Page, static_server):
+    """Test that all ports are at coastal edges (facing water)."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            // Check each port position is at a coastal edge
+            const HEX_DIRECTIONS_BY_EDGE = [
+                { q: 1, r: 0 },   // Edge 0 faces right
+                { q: 0, r: 1 },   // Edge 1 faces lower-right
+                { q: -1, r: 1 },  // Edge 2 faces lower-left
+                { q: -1, r: 0 },  // Edge 3 faces left
+                { q: 0, r: -1 },  // Edge 4 faces upper-left
+                { q: 1, r: -1 }   // Edge 5 faces upper-right
+            ];
+
+            for (const pos of PORT_EDGE_POSITIONS) {
+                const hex = gameState.hexes[pos.hexIndex];
+                const dir = HEX_DIRECTIONS_BY_EDGE[pos.edgeIndex];
+                const neighborQ = hex.q + dir.q;
+                const neighborR = hex.r + dir.r;
+
+                // Check if neighbor exists (if it does, edge is not coastal)
+                const neighborExists = gameState.hexes.some(h => h.q === neighborQ && h.r === neighborR);
+                if (neighborExists) {
+                    return {
+                        valid: false,
+                        error: `Port at hex ${pos.hexIndex} edge ${pos.edgeIndex} is not coastal`
+                    };
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown error")
+
+
+def test_ports_not_adjacent(page: Page, static_server):
+    """Test that ports have at least one vertex between them (not on consecutive edges)."""
+    page.goto("http://127.0.0.1:8123/catan-practice.html")
+
+    result = page.evaluate("""
+        () => {
+            // Get all port vertex positions
+            const portVertices = gameState.ports.map(port => ({
+                v1: { x: port.x1, y: port.y1 },
+                v2: { x: port.x2, y: port.y2 }
+            }));
+
+            // Helper to calculate distance between two points
+            function dist(p1, p2) {
+                return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
+            }
+
+            // Edge length on the hex grid (distance between adjacent vertices)
+            const edgeLength = HEX_SIZE; // Approximate edge length
+
+            // Check each pair of ports
+            for (let i = 0; i < portVertices.length; i++) {
+                for (let j = i + 1; j < portVertices.length; j++) {
+                    const portA = portVertices[i];
+                    const portB = portVertices[j];
+
+                    // Check all vertex pairs between the two ports
+                    const pairs = [
+                        [portA.v1, portB.v1],
+                        [portA.v1, portB.v2],
+                        [portA.v2, portB.v1],
+                        [portA.v2, portB.v2]
+                    ];
+
+                    for (const [v1, v2] of pairs) {
+                        const d = dist(v1, v2);
+                        // Vertices are too close if they're the same (d ≈ 0)
+                        // or adjacent on the perimeter (d ≈ edgeLength)
+                        // Use tolerance of 1.1 * edgeLength to catch adjacent vertices
+                        if (d < edgeLength * 1.1) {
+                            return {
+                                valid: false,
+                                error: `Ports ${i} and ${j} are too close (vertex distance: ${d.toFixed(1)}, edge length: ${edgeLength})`
+                            };
+                        }
+                    }
+                }
+            }
+            return { valid: true };
+        }
+    """)
+    assert result["valid"], result.get("error", "Unknown error")

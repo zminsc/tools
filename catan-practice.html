@@ -58,6 +58,13 @@
             max-width: 580px;
         }
 
+        /* Ensure minimum board size on larger screens (tablets and up) */
+        @media (min-width: 768px) {
+            #board {
+                min-width: 480px;
+            }
+        }
+
         .controls {
             background: #16213e;
             border-radius: 12px;
@@ -178,6 +185,38 @@
         button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        .toggle-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .toggle-label input[type="checkbox"]:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .toggle-label.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .port-indicator {
+            pointer-events: none;
         }
 
         .instructions {
@@ -480,6 +519,10 @@
                     <h3>Actions</h3>
                     <button id="undoBtn" class="btn-warning" disabled>Undo Last Action</button>
                     <button id="newBoardBtn" class="btn-primary">New Board</button>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="skipRoadsToggle">
+                        <span>Skip road placement</span>
+                    </label>
                 </div>
 
                 <div class="control-section">
@@ -577,23 +620,40 @@
             { q: -2, r: 2 }, { q: -1, r: 2 }, { q: 0, r: 2 }
         ];
 
-        // Port positions (edge of board)
-        const PORT_POSITIONS = [
-            { hex1: 0, hex2: null, edge: 0, type: '3:1' },
-            { hex1: 1, hex2: null, edge: 1, type: 'wheat' },
-            { hex1: 3, hex2: null, edge: 5, type: 'ore' },
-            { hex1: 6, hex2: null, edge: 1, type: 'sheep' },
-            { hex1: 7, hex2: null, edge: 4, type: '3:1' },
-            { hex1: 11, hex2: null, edge: 2, type: '3:1' },
-            { hex1: 12, hex2: null, edge: 4, type: '3:1' },
-            { hex1: 15, hex2: null, edge: 2, type: 'brick' },
-            { hex1: 16, hex2: null, edge: 3, type: 'wood' }
+        // Port positions (edge of board) - defined by hex index and edge index
+        // Edge indices based on corner pairs: 0=right(0→1), 1=lower-right(1→2), 2=lower-left(2→3), 3=left(3→4), 4=upper-left(4→5), 5=upper-right(5→0)
+        // Each edge faces a neighbor direction: 0→(1,0), 1→(0,1), 2→(-1,1), 3→(-1,0), 4→(0,-1), 5→(1,-1)
+        // Coastal edges are those where the neighbor hex doesn't exist
+        const PORT_EDGE_POSITIONS = [
+            { hexIndex: 0, edgeIndex: 5 },   // Top-center
+            { hexIndex: 2, edgeIndex: 5 },   // Top-right
+            { hexIndex: 6, edgeIndex: 0 },   // Right-upper
+            { hexIndex: 11, edgeIndex: 1 },  // Right-lower
+            { hexIndex: 18, edgeIndex: 0 },  // Bottom-right
+            { hexIndex: 17, edgeIndex: 2 },  // Bottom-center
+            { hexIndex: 16, edgeIndex: 3 },  // Bottom-left
+            { hexIndex: 7, edgeIndex: 3 },   // Left-center
+            { hexIndex: 3, edgeIndex: 4 }    // Left-upper
         ];
+
+        // Port types to be shuffled (4 generic 3:1, 5 resource-specific 2:1)
+        const PORT_TYPES = ['3:1', '3:1', '3:1', '3:1', 'wood', 'wheat', 'sheep', 'brick', 'ore'];
+
+        // Port colors - distinct and vibrant for easy identification
+        const PORT_COLORS = {
+            '3:1': '#ffffff',    // White for generic ports
+            'wood': '#8B4513',   // Saddle brown (like lumber)
+            'wheat': '#FFD700',  // Gold (like grain)
+            'sheep': '#32CD32',  // Lime green (like wool/pasture)
+            'brick': '#DC143C',  // Crimson (like clay/brick)
+            'ore': '#4169E1'     // Royal blue (like ore/metal)
+        };
 
         // Game state
         let gameState = {
             hexes: [],
-            vertices: new Map(), // key: "x,y" (rounded), value: { settlement: null or { player } }
+            ports: [], // Array of { type, vertex1Key, vertex2Key }
+            vertices: new Map(), // key: "x,y" (rounded), value: { settlement: null or { player }, port: null or { type } }
             edges: new Map(), // key: "x1,y1-x2,y2" (sorted), value: { road: null or { player } }
             currentPlayer: 1,
             phase: 'settlement', // 'settlement' or 'road'
@@ -650,45 +710,152 @@
             return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
         }
 
-        // Generate board
-        function generateBoard() {
-            // Create resource tiles
-            const resources = [];
-            for (const [resource, count] of Object.entries(RESOURCE_COUNTS)) {
-                for (let i = 0; i < count; i++) {
-                    resources.push(resource);
+        // Axial coordinate directions for adjacent hexes
+        const HEX_DIRECTIONS = [
+            { q: 1, r: 0 }, { q: -1, r: 0 },
+            { q: 0, r: 1 }, { q: 0, r: -1 },
+            { q: 1, r: -1 }, { q: -1, r: 1 }
+        ];
+
+        // Get indices of hexes adjacent to the given hex
+        function getAdjacentHexIndices(hexIndex, hexes) {
+            const hex = hexes[hexIndex];
+            const adjacent = [];
+
+            for (const dir of HEX_DIRECTIONS) {
+                const adjQ = hex.q + dir.q;
+                const adjR = hex.r + dir.r;
+
+                const adjIndex = hexes.findIndex(h => h.q === adjQ && h.r === adjR);
+                if (adjIndex !== -1) {
+                    adjacent.push(adjIndex);
                 }
             }
-            const shuffledResources = shuffle(resources);
 
-            // Assign numbers (skip desert)
-            const numbers = shuffle([...NUMBER_TOKENS]);
-            let numberIndex = 0;
+            return adjacent;
+        }
 
-            gameState.hexes = HEX_POSITIONS.map((pos, i) => {
-                const resource = shuffledResources[i];
-                const pixel = hexToPixel(pos.q, pos.r);
-                let number = null;
+        // Get vertices (intersections) and their adjacent hex indices
+        function getVerticesWithAdjacentHexes(hexes) {
+            const vertexMap = new Map(); // key -> Set of hex indices
 
-                if (resource === 'desert') {
-                    gameState.robberHex = i;
-                } else {
-                    number = numbers[numberIndex++];
+            hexes.forEach((hex, hexIndex) => {
+                const corners = getHexCorners(hex.x, hex.y);
+                corners.forEach(corner => {
+                    const key = vertexKey(corner.x, corner.y);
+                    if (!vertexMap.has(key)) {
+                        vertexMap.set(key, new Set());
+                    }
+                    vertexMap.get(key).add(hexIndex);
+                });
+            });
+
+            return vertexMap;
+        }
+
+        // Validate board against Catan rules
+        function isValidBoard(hexes) {
+            // Rule 1 & 2: Check adjacent hexes for 6/8 touching and same numbers
+            for (let i = 0; i < hexes.length; i++) {
+                const hex = hexes[i];
+                if (hex.number === null) continue; // Skip desert
+
+                const adjacentIndices = getAdjacentHexIndices(i, hexes);
+
+                for (const adjIndex of adjacentIndices) {
+                    const adjHex = hexes[adjIndex];
+                    if (adjHex.number === null) continue; // Skip desert
+
+                    // Rule 1: 6 and 8 can't touch each other
+                    if ((hex.number === 6 && adjHex.number === 8) ||
+                        (hex.number === 8 && adjHex.number === 6)) {
+                        return false;
+                    }
+
+                    // Rule 2: Same numbers can't touch each other
+                    if (hex.number === adjHex.number) {
+                        return false;
+                    }
+                }
+            }
+
+            // Rule 3: No vertex can have 13+ pips
+            const vertexMap = getVerticesWithAdjacentHexes(hexes);
+
+            for (const [key, hexIndices] of vertexMap) {
+                let totalPips = 0;
+
+                for (const hexIndex of hexIndices) {
+                    const hex = hexes[hexIndex];
+                    if (hex.number !== null) {
+                        totalPips += NUMBER_PROBABILITY[hex.number] || 0;
+                    }
                 }
 
-                return {
-                    index: i,
-                    q: pos.q,
-                    r: pos.r,
-                    x: pixel.x,
-                    y: pixel.y,
-                    resource,
-                    number
-                };
-            });
+                if (totalPips >= 13) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Generate board
+        function generateBoard() {
+            const MAX_ATTEMPTS = 1000;
+            let attempts = 0;
+
+            // Create base resource array
+            const baseResources = [];
+            for (const [resource, count] of Object.entries(RESOURCE_COUNTS)) {
+                for (let i = 0; i < count; i++) {
+                    baseResources.push(resource);
+                }
+            }
+
+            do {
+                attempts++;
+
+                // Shuffle resources
+                const shuffledResources = shuffle(baseResources);
+
+                // Assign numbers (skip desert)
+                const numbers = shuffle([...NUMBER_TOKENS]);
+                let numberIndex = 0;
+
+                gameState.hexes = HEX_POSITIONS.map((pos, i) => {
+                    const resource = shuffledResources[i];
+                    const pixel = hexToPixel(pos.q, pos.r);
+                    let number = null;
+
+                    if (resource === 'desert') {
+                        gameState.robberHex = i;
+                    } else {
+                        number = numbers[numberIndex++];
+                    }
+
+                    return {
+                        index: i,
+                        q: pos.q,
+                        r: pos.r,
+                        x: pixel.x,
+                        y: pixel.y,
+                        resource,
+                        number
+                    };
+                });
+
+            } while (!isValidBoard(gameState.hexes) && attempts < MAX_ATTEMPTS);
+
+            if (attempts >= MAX_ATTEMPTS) {
+                console.warn(`Could not generate valid board after ${MAX_ATTEMPTS} attempts`);
+            }
 
             // Build vertex and edge maps
             buildVerticesAndEdges();
+
+            // Generate random ports
+            generatePorts();
         }
 
         function buildVerticesAndEdges() {
@@ -706,6 +873,7 @@
                             x: corner.x,
                             y: corner.y,
                             settlement: null,
+                            port: null,
                             adjacentHexes: []
                         });
                     }
@@ -725,6 +893,56 @@
                         });
                     }
                 }
+            });
+        }
+
+        function generatePorts() {
+            // Shuffle port types randomly
+            const shuffledTypes = shuffle([...PORT_TYPES]);
+            gameState.ports = [];
+
+            // Clear any existing port markers on vertices
+            gameState.vertices.forEach(v => v.port = null);
+
+            // Track all port vertex keys to detect adjacency
+            const usedVertexKeys = new Set();
+
+            // For each port position, get the two vertices of the edge
+            PORT_EDGE_POSITIONS.forEach((pos, index) => {
+                const hex = gameState.hexes[pos.hexIndex];
+                const corners = getHexCorners(hex.x, hex.y);
+
+                // Get the two corners that form this edge
+                const c1 = corners[pos.edgeIndex];
+                const c2 = corners[(pos.edgeIndex + 1) % 6];
+
+                const v1Key = vertexKey(c1.x, c1.y);
+                const v2Key = vertexKey(c2.x, c2.y);
+                const portType = shuffledTypes[index];
+
+                // Check for adjacency (shared vertex with another port)
+                if (usedVertexKeys.has(v1Key) || usedVertexKeys.has(v2Key)) {
+                    console.warn(`Port at hex ${pos.hexIndex} edge ${pos.edgeIndex} shares a vertex with another port!`);
+                }
+                usedVertexKeys.add(v1Key);
+                usedVertexKeys.add(v2Key);
+
+                // Store port info
+                gameState.ports.push({
+                    type: portType,
+                    vertex1Key: v1Key,
+                    vertex2Key: v2Key,
+                    x1: c1.x,
+                    y1: c1.y,
+                    x2: c2.x,
+                    y2: c2.y
+                });
+
+                // Mark both vertices as port vertices
+                const v1 = gameState.vertices.get(v1Key);
+                const v2 = gameState.vertices.get(v2Key);
+                if (v1) v1.port = { type: portType };
+                if (v2) v2.port = { type: portType };
             });
         }
 
@@ -795,6 +1013,20 @@
             return valid;
         }
 
+        // Helper function to advance to next player
+        function advanceToNextPlayer() {
+            gameState.placementIndex++;
+            if (gameState.placementIndex < gameState.placementOrder.length) {
+                gameState.currentPlayer = gameState.placementOrder[gameState.placementIndex];
+                gameState.phase = 'settlement';
+                if (gameState.placementIndex >= 4) {
+                    gameState.round = 2;
+                }
+            } else {
+                gameState.phase = 'done';
+            }
+        }
+
         // Placement actions
         function placeSettlement(key) {
             const vertex = gameState.vertices.get(key);
@@ -810,7 +1042,14 @@
                 y: vertex.y
             });
 
-            gameState.phase = 'road';
+            // Check if skip roads toggle is enabled
+            const skipRoads = document.getElementById('skipRoadsToggle').checked;
+            if (skipRoads) {
+                advanceToNextPlayer();
+            } else {
+                gameState.phase = 'road';
+            }
+
             render();
             updateUI();
         }
@@ -828,16 +1067,7 @@
             });
 
             // Move to next player
-            gameState.placementIndex++;
-            if (gameState.placementIndex < gameState.placementOrder.length) {
-                gameState.currentPlayer = gameState.placementOrder[gameState.placementIndex];
-                gameState.phase = 'settlement';
-                if (gameState.placementIndex >= 4) {
-                    gameState.round = 2;
-                }
-            } else {
-                gameState.phase = 'done';
-            }
+            advanceToNextPlayer();
 
             render();
             updateUI();
@@ -963,50 +1193,30 @@
         }
 
         function drawPorts(svg) {
-            const portData = [
-                { x: 170, y: 45, type: '3:1', angle: -30 },
-                { x: 290, y: 20, type: 'wheat', angle: 0 },
-                { x: 95, y: 130, type: 'ore', angle: -60 },
-                { x: 430, y: 70, type: 'sheep', angle: 30 },
-                { x: 50, y: 250, type: '3:1', angle: -90 },
-                { x: 510, y: 180, type: '3:1', angle: 60 },
-                { x: 70, y: 380, type: '3:1', angle: -120 },
-                { x: 490, y: 320, type: 'brick', angle: 90 },
-                { x: 170, y: 480, type: 'wood', angle: -150 }
-            ];
+            // Draw port indicators at each port vertex
+            gameState.ports.forEach(port => {
+                const color = PORT_COLORS[port.type] || '#7f8c8d';
 
-            const portColors = {
-                '3:1': '#7f8c8d',
-                'wood': '#2d5a27',
-                'wheat': '#d4a017',
-                'sheep': '#7cb342',
-                'brick': '#b85c38',
-                'ore': '#5d6d7e'
-            };
-
-            portData.forEach(port => {
-                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-
-                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                rect.setAttribute('x', port.x - 20);
-                rect.setAttribute('y', port.y - 12);
-                rect.setAttribute('width', 40);
-                rect.setAttribute('height', 24);
-                rect.setAttribute('rx', 4);
-                rect.setAttribute('fill', portColors[port.type] || '#7f8c8d');
-                rect.setAttribute('stroke', '#1a1a2e');
-                rect.setAttribute('stroke-width', 2);
-                g.appendChild(rect);
-
-                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                text.setAttribute('x', port.x);
-                text.setAttribute('y', port.y + 1);
-                text.setAttribute('class', 'port-text');
-                text.textContent = port.type === '3:1' ? '3:1' : '2:1';
-                g.appendChild(text);
-
-                svg.appendChild(g);
+                // Draw indicator at both vertices of this port
+                drawPortIndicator(svg, port.x1, port.y1, color);
+                drawPortIndicator(svg, port.x2, port.y2, color);
             });
+        }
+
+        function drawPortIndicator(svg, x, y, color) {
+            // Draw a colored circle at the port vertex
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', x);
+            circle.setAttribute('cy', y);
+            circle.setAttribute('r', 8);
+            circle.setAttribute('fill', color);
+            // Use dark stroke for light colors (white, yellow), white stroke for dark colors
+            const lightColors = ['#ffffff', '#FFD700', '#32CD32'];
+            const strokeColor = lightColors.includes(color) ? '#1a1a2e' : '#fff';
+            circle.setAttribute('stroke', strokeColor);
+            circle.setAttribute('stroke-width', 2);
+            circle.setAttribute('class', 'port-indicator');
+            svg.appendChild(circle);
         }
 
         function drawSettlement(svg, x, y, player) {
@@ -1117,12 +1327,24 @@
             gameState.edges.forEach(e => { if (e.road) roads++; });
             document.getElementById('settlementCount').textContent = settlements;
             document.getElementById('roadCount').textContent = roads;
+
+            // Disable skip roads toggle if any road has been placed
+            const skipRoadsToggle = document.getElementById('skipRoadsToggle');
+            const toggleLabel = skipRoadsToggle.closest('.toggle-label');
+            if (roads > 0) {
+                skipRoadsToggle.disabled = true;
+                toggleLabel.classList.add('disabled');
+            } else {
+                skipRoadsToggle.disabled = false;
+                toggleLabel.classList.remove('disabled');
+            }
         }
 
         // Save/Load
         function saveBoard() {
             const data = {
                 hexes: gameState.hexes.map(h => ({ resource: h.resource, number: h.number })),
+                portTypes: gameState.ports.map(p => p.type),
                 settlements: [],
                 roads: [],
                 currentPlayer: gameState.currentPlayer,
@@ -1157,6 +1379,38 @@
                 });
 
                 gameState.robberHex = data.robberHex;
+
+                // Restore ports if saved, otherwise regenerate
+                if (data.portTypes && data.portTypes.length === PORT_EDGE_POSITIONS.length) {
+                    // Clear existing port markers
+                    gameState.vertices.forEach(v => v.port = null);
+                    gameState.ports = [];
+
+                    PORT_EDGE_POSITIONS.forEach((pos, index) => {
+                        const hex = gameState.hexes[pos.hexIndex];
+                        const corners = getHexCorners(hex.x, hex.y);
+                        const c1 = corners[pos.edgeIndex];
+                        const c2 = corners[(pos.edgeIndex + 1) % 6];
+                        const v1Key = vertexKey(c1.x, c1.y);
+                        const v2Key = vertexKey(c2.x, c2.y);
+                        const portType = data.portTypes[index];
+
+                        gameState.ports.push({
+                            type: portType,
+                            vertex1Key: v1Key,
+                            vertex2Key: v2Key,
+                            x1: c1.x, y1: c1.y,
+                            x2: c2.x, y2: c2.y
+                        });
+
+                        const v1 = gameState.vertices.get(v1Key);
+                        const v2 = gameState.vertices.get(v2Key);
+                        if (v1) v1.port = { type: portType };
+                        if (v2) v2.port = { type: portType };
+                    });
+                } else {
+                    generatePorts();
+                }
 
                 // Reset placements
                 gameState.vertices.forEach(v => v.settlement = null);
